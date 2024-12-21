@@ -1,2 +1,86 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+#include <Wire.h>
+#include <MPU6050.h>
+#include <Servo.h>
+
+// Inisialisasi sensor IMU dan servo
+MPU6050 imu;
+Servo servoAileron;
+Servo servoElevator;
+
+// Parameter PID
+float Kp = 2.0;
+float Ki = 0.5;
+float Kd = 1.0;
+
+// Variabel PID
+float errorRoll, errorPitch;
+float prevErrorRoll, prevErrorPitch;
+float integralRoll, integralPitch;
+float derivativeRoll, derivativePitch;
+float outputRoll, outputPitch;
+
+// Setpoint (orientasi yang diinginkan)
+float setpointRoll = 0.0;
+float setpointPitch = 0.0;
+
+void setup() {
+  Wire.begin();
+  Serial.begin(9600);
+  
+  // Inisialisasi IMU
+  imu.initialize();
+  if (!imu.testConnection()) {
+    Serial.println("Koneksi IMU gagal!");
+    while (1);
+  }
+  
+  // Inisialisasi servo
+  servoAileron.attach(9); // Pin servo aileron
+  servoElevator.attach(10); // Pin servo elevator
+  
+  // Set posisi awal servo
+  servoAileron.write(90);
+  servoElevator.write(90);
+}
+
+void loop() {
+  // Baca data IMU
+  imu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  
+  // Hitung sudut roll dan pitch
+  float roll = atan2(ay, az) * 180 / PI;
+  float pitch = atan2(-ax, sqrt(ay * ay + az * az)) * 180 / PI;
+  
+  // Hitung error
+  errorRoll = setpointRoll - roll;
+  errorPitch = setpointPitch - pitch;
+  
+  // Hitung integral
+  integralRoll += errorRoll;
+  integralPitch += errorPitch;
+  
+  // Hitung derivatif
+  derivativeRoll = errorRoll - prevErrorRoll;
+  derivativePitch = errorPitch - prevErrorPitch;
+  
+  // Hitung output PID
+  outputRoll = Kp * errorRoll + Ki * integralRoll + Kd * derivativeRoll;
+  outputPitch = Kp * errorPitch + Ki * integralPitch + Kd * derivativePitch;
+  
+  // Batasi output
+  outputRoll = constrain(outputRoll, -45, 45);
+  outputPitch = constrain(outputPitch, -45, 45);
+  
+  // Kontrol servo
+  servoAileron.write(90 + outputRoll);
+  servoElevator.write(90 + outputPitch);
+  
+  // Simpan error sebelumnya
+  prevErrorRoll = errorRoll;
+  prevErrorPitch = errorPitch;
+  
+  // Delay untuk stabilitas
+  delay(20);
+}
